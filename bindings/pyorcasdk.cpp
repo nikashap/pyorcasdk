@@ -5,6 +5,8 @@
 #include <pybind11/chrono.h>
 #include <pybind11/functional.h>
 #include "actuator.h"
+#include "src/SerialFTDI.h"
+#include "src/chrono_clock.h"
 
 namespace py = pybind11;
 
@@ -12,7 +14,34 @@ PYBIND11_MODULE(_pyorcasdk, m)
 {
     m.doc() = "Python bindings for the C++ orcaSDK";
 
-     py::class_<orcaSDK::StreamData>(m, "StreamData")
+    // ==================== SerialInterface (base class) ====================
+    py::class_<orcaSDK::SerialInterface, std::shared_ptr<orcaSDK::SerialInterface>>(m, "SerialInterface")
+        .def("open_serial_port", 
+             py::overload_cast<std::string, unsigned int>(&orcaSDK::SerialInterface::open_serial_port),
+             py::arg("port_path"), py::arg("baud"))
+        .def("close_serial_port", &orcaSDK::SerialInterface::close_serial_port)
+        .def("adjust_baud_rate", &orcaSDK::SerialInterface::adjust_baud_rate)
+        .def("is_open", &orcaSDK::SerialInterface::is_open);
+
+    // ==================== SerialFTDI ====================
+    py::class_<orcaSDK::SerialFTDI, orcaSDK::SerialInterface, std::shared_ptr<orcaSDK::SerialFTDI>>(m, "SerialFTDI")
+        .def(py::init<uint8_t>(), py::arg("latency_ms") = 1,
+             "Create SerialFTDI with specified latency timer (1-255 ms, default 1)")
+        .def("set_latency_timer", &orcaSDK::SerialFTDI::set_latency_timer,
+             py::arg("latency_ms"), "Set FTDI latency timer in milliseconds")
+        .def("get_latency_timer", &orcaSDK::SerialFTDI::get_latency_timer,
+             "Get current latency timer setting");
+
+    // ==================== Clock ====================
+    py::class_<orcaSDK::Clock, std::shared_ptr<orcaSDK::Clock>>(m, "Clock")
+        .def("get_time_microseconds", &orcaSDK::Clock::get_time_microseconds);
+
+    // ==================== ChronoClock ====================
+    py::class_<orcaSDK::ChronoClock, orcaSDK::Clock, std::shared_ptr<orcaSDK::ChronoClock>>(m, "ChronoClock")
+        .def(py::init<>());
+
+    // ==================== StreamData ====================
+    py::class_<orcaSDK::StreamData>(m, "StreamData")
         .def_readwrite("position", &orcaSDK::StreamData::position)
         .def_readwrite("force", &orcaSDK::StreamData::force)
         .def_readwrite("power", &orcaSDK::StreamData::power)
@@ -20,7 +49,8 @@ PYBIND11_MODULE(_pyorcasdk, m)
         .def_readwrite("voltage", &orcaSDK::StreamData::voltage)
         .def_readwrite("errors", &orcaSDK::StreamData::errors);
 
-     py::enum_<orcaSDK::MotorMode>(m, "MotorMode")
+    // ==================== Enums ====================
+    py::enum_<orcaSDK::MotorMode>(m, "MotorMode")
         .value("AutoZeroMode", orcaSDK::AutoZeroMode)
         .value("SleepMode", orcaSDK::SleepMode)
         .value("ForceMode", orcaSDK::ForceMode)
@@ -29,98 +59,98 @@ PYBIND11_MODULE(_pyorcasdk, m)
         .value("KinematicMode", orcaSDK::KinematicMode)
         .export_values();  // This allows access to the enum values in Python
 
-        
-     py::enum_<orcaSDK::Actuator::HapticEffect>(m, "HapticEffect", py::arithmetic())
-          .value("ConstF", orcaSDK::Actuator::HapticEffect::ConstF)
-          .value("Spring0", orcaSDK::Actuator::HapticEffect::Spring0)
-          .value("Spring1", orcaSDK::Actuator::HapticEffect::Spring1)
-          .value("Spring2", orcaSDK::Actuator::HapticEffect::Spring2)
-          .value("Damper", orcaSDK::Actuator::HapticEffect::Damper)
-          .value("Inertia", orcaSDK::Actuator::HapticEffect::Inertia)
-          .value("Osc0", orcaSDK::Actuator::HapticEffect::Osc0)
-          .value("Osc1", orcaSDK::Actuator::HapticEffect::Osc1)
-          .export_values(); // Makes the values accessible directly under HapticEffect
+    py::enum_<orcaSDK::Actuator::HapticEffect>(m, "HapticEffect", py::arithmetic())
+        .value("ConstF", orcaSDK::Actuator::HapticEffect::ConstF)
+        .value("Spring0", orcaSDK::Actuator::HapticEffect::Spring0)
+        .value("Spring1", orcaSDK::Actuator::HapticEffect::Spring1)
+        .value("Spring2", orcaSDK::Actuator::HapticEffect::Spring2)
+        .value("Damper", orcaSDK::Actuator::HapticEffect::Damper)
+        .value("Inertia", orcaSDK::Actuator::HapticEffect::Inertia)
+        .value("Osc0", orcaSDK::Actuator::HapticEffect::Osc0)
+        .value("Osc1", orcaSDK::Actuator::HapticEffect::Osc1)
+        .export_values(); // Makes the values accessible directly under HapticEffect
 
-     py::enum_<orcaSDK::Actuator::SpringCoupling>(m, "SpringCoupling")
-          .value("both", orcaSDK::Actuator::SpringCoupling::both)
-          .value("positive", orcaSDK::Actuator::SpringCoupling::positive)
-          .value("negative ", orcaSDK::Actuator::SpringCoupling::negative)
-          .export_values(); // Makes the values accessible directly under HapticEffect
+    py::enum_<orcaSDK::Actuator::SpringCoupling>(m, "SpringCoupling")
+        .value("both", orcaSDK::Actuator::SpringCoupling::both)
+        .value("positive", orcaSDK::Actuator::SpringCoupling::positive)
+        .value("negative", orcaSDK::Actuator::SpringCoupling::negative)
+        .export_values(); // Makes the values accessible directly under HapticEffect
 
-     py::enum_<orcaSDK::Actuator::OscillatorType>(m, "OscillatorType")
-          .value("Pulse", orcaSDK::Actuator::OscillatorType::Pulse)
-          .value("Sine", orcaSDK::Actuator::OscillatorType::Sine)
-          .value("Triangle ", orcaSDK::Actuator::OscillatorType::Triangle)
-          .value("Saw  ", orcaSDK::Actuator::OscillatorType::Saw)
-          .export_values(); // Makes the values accessible directly under HapticEffect
+    py::enum_<orcaSDK::Actuator::OscillatorType>(m, "OscillatorType")
+        .value("Pulse", orcaSDK::Actuator::OscillatorType::Pulse)
+        .value("Sine", orcaSDK::Actuator::OscillatorType::Sine)
+        .value("Triangle", orcaSDK::Actuator::OscillatorType::Triangle)
+        .value("Saw", orcaSDK::Actuator::OscillatorType::Saw)
+        .export_values(); // Makes the values accessible directly under HapticEffect
 
-     py::class_<orcaSDK::OrcaError>(m, "OrcaError")
-          .def(py::init<int, std::string>(), py::arg("failure_type"), py::arg("error_message") = "")
-          .def("__bool__", &orcaSDK::OrcaError::operator bool)
-          .def("what", &orcaSDK::OrcaError::what)
-          .def("__repr__", [](const orcaSDK::OrcaError& self) {
-               return "<OrcaError failure=" + std::to_string(static_cast<bool>(self)) +
-                    ", message='" + self.what() + "'>";
-          });
+    // ==================== Error Types ====================
+    py::class_<orcaSDK::OrcaError>(m, "OrcaError")
+        .def(py::init<int, std::string>(), py::arg("failure_type"), py::arg("error_message") = "")
+        .def("__bool__", &orcaSDK::OrcaError::operator bool)
+        .def("what", &orcaSDK::OrcaError::what)
+        .def("__repr__", [](const orcaSDK::OrcaError& self) {
+            return "<OrcaError failure=" + std::to_string(static_cast<bool>(self)) +
+                ", message='" + self.what() + "'>";
+        });
 
             // Bind OrcaResult<int32_t>
-     py::class_<orcaSDK::OrcaResult<int32_t>>(m, "OrcaResultInt32")
+    py::class_<orcaSDK::OrcaResult<int32_t>>(m, "OrcaResultInt32")
           //.def(py::init<>())  // Default constructor
-          .def_readwrite("value", &orcaSDK::OrcaResult<int32_t>::value)
-          .def_readwrite("error", &orcaSDK::OrcaResult<int32_t>::error);
+        .def_readwrite("value", &orcaSDK::OrcaResult<int32_t>::value)
+        .def_readwrite("error", &orcaSDK::OrcaResult<int32_t>::error);
 
-     py::class_<orcaSDK::OrcaResult<int16_t>>(m, "OrcaResultInt16")
+    py::class_<orcaSDK::OrcaResult<int16_t>>(m, "OrcaResultInt16")
           //.def(py::init<>())  // Default constructor
-          .def_readwrite("value", &orcaSDK::OrcaResult<int16_t>::value)
-          .def_readwrite("error", &orcaSDK::OrcaResult<int16_t>::error);
+        .def_readwrite("value", &orcaSDK::OrcaResult<int16_t>::value)
+        .def_readwrite("error", &orcaSDK::OrcaResult<int16_t>::error);
 
-     py::class_<orcaSDK::OrcaResult<uint16_t>>(m, "OrcaResultUInt16")
+    py::class_<orcaSDK::OrcaResult<uint16_t>>(m, "OrcaResultUInt16")
           //.def(py::init<>())  // Default constructor
-          .def_readwrite("value", &orcaSDK::OrcaResult<uint16_t>::value)
-          .def_readwrite("error", &orcaSDK::OrcaResult<uint16_t>::error);
+        .def_readwrite("value", &orcaSDK::OrcaResult<uint16_t>::value)
+        .def_readwrite("error", &orcaSDK::OrcaResult<uint16_t>::error);
 
-     py::class_<orcaSDK::OrcaResult<std::vector<uint16_t>>>(m, "OrcaResultList")
+    py::class_<orcaSDK::OrcaResult<std::vector<uint16_t>>>(m, "OrcaResultList")
           //.def(py::init<>())  // Default constructor
-          .def_readwrite("value", &orcaSDK::OrcaResult<std::vector<uint16_t>>::value)
-          .def_readwrite("error", &orcaSDK::OrcaResult<std::vector<uint16_t>>::error);
+        .def_readwrite("value", &orcaSDK::OrcaResult<std::vector<uint16_t>>::value)
+        .def_readwrite("error", &orcaSDK::OrcaResult<std::vector<uint16_t>>::error);
 
-     py::class_<orcaSDK::OrcaResult<orcaSDK::MotorMode>>(m, "OrcaResultMotorMode")
+    py::class_<orcaSDK::OrcaResult<orcaSDK::MotorMode>>(m, "OrcaResultMotorMode")
           //.def(py::init<>())  // Default constructor
-          .def_readwrite("value", &orcaSDK::OrcaResult<orcaSDK::MotorMode>::value)
-          .def_readwrite("error", &orcaSDK::OrcaResult<orcaSDK::MotorMode>::error);
+        .def_readwrite("value", &orcaSDK::OrcaResult<orcaSDK::MotorMode>::value)
+        .def_readwrite("error", &orcaSDK::OrcaResult<orcaSDK::MotorMode>::error);
 
 
     py::enum_<orcaSDK::MessagePriority>(m, "MessagePriority")
         .value("important", orcaSDK::MessagePriority::important)
         .value("not_important", orcaSDK::MessagePriority::not_important)
         .export_values();
-    
+
+    // ==================== Actuator ====================
     py::class_<orcaSDK::Actuator>(m, "Actuator")
+        // Default constructor (uses SerialASIO internally)
         .def(py::init<const char*, uint8_t>(), py::arg("name") = "", py::arg("modbus_server_address") = 1)
 
+        // Constructor with custom SerialInterface and Clock
         .def(py::init<std::shared_ptr<orcaSDK::SerialInterface>, std::shared_ptr<orcaSDK::Clock>, const char*, uint8_t>(),
+             py::arg("serial_interface"), py::arg("clock"), 
+             py::arg("name") = "", py::arg("modbus_server_address") = 1,
+             "Create Actuator with custom serial interface (e.g., SerialFTDI)")
 
-             py::arg("serial_interface"), py::arg("clock"), py::arg("name") = "", py::arg("modbus_server_address") = 1)
-
-      .def("open_serial_port", 
-            // Integer port version
-            py::overload_cast<int, int, int>(
-                &orcaSDK::Actuator::open_serial_port
-            ),
-            py::arg("port_number"),
-            py::arg("baud_rate") = orcaSDK::Constants::kDefaultBaudRate,
-            py::arg("interframe_delay") = orcaSDK::Constants::kDefaultInterframeDelay_uS,
-            "Open serial port using port number"
+        .def("open_serial_port",
+          // Integer port version 
+          py::overload_cast<int, int, int>(&orcaSDK::Actuator::open_serial_port),
+          py::arg("port_number"),
+          py::arg("baud_rate") = orcaSDK::Constants::kDefaultBaudRate,
+          py::arg("interframe_delay") = orcaSDK::Constants::kDefaultInterframeDelay_uS,
+          "Open serial port using port number"
         )
         .def("open_serial_port",
-            // String port version
-            py::overload_cast<std::string, int, int>(
-                &orcaSDK::Actuator::open_serial_port
-            ),
-            py::arg("port_path"),
-            py::arg("baud_rate") = orcaSDK::Constants::kDefaultBaudRate,
-            py::arg("interframe_delay") = orcaSDK::Constants::kDefaultInterframeDelay_uS,
-            "Open serial port using port path"
+          // String port version
+          py::overload_cast<std::string, int, int>(&orcaSDK::Actuator::open_serial_port),
+          py::arg("port_path"),
+          py::arg("baud_rate") = orcaSDK::Constants::kDefaultBaudRate,
+          py::arg("interframe_delay") = orcaSDK::Constants::kDefaultInterframeDelay_uS,
+          "Open serial port using port path"
         )
 
         .def("close_serial_port", &orcaSDK::Actuator::close_serial_port)
@@ -144,32 +174,37 @@ PYBIND11_MODULE(_pyorcasdk, m)
              py::arg("reg_address"), py::arg("priority") = orcaSDK::MessagePriority::important)
 
         .def("read_multiple_registers_blocking", &orcaSDK::Actuator::read_multiple_registers_blocking,
-             py::arg("reg_start_address"), py::arg("num_registers"), py::arg("priority") = orcaSDK::MessagePriority::important)
+             py::arg("reg_start_address"), py::arg("num_registers"), 
+             py::arg("priority") = orcaSDK::MessagePriority::important)
 
         .def("write_register_blocking", &orcaSDK::Actuator::write_register_blocking,
-             py::arg("reg_address"), py::arg("write_data"), py::arg("priority") = orcaSDK::MessagePriority::important)
+             py::arg("reg_address"), py::arg("write_data"), 
+             py::arg("priority") = orcaSDK::MessagePriority::important)
 
         .def("write_wide_register_blocking", &orcaSDK::Actuator::write_wide_register_blocking,
-             py::arg("reg_address"), py::arg("write_data"), py::arg("priority") = orcaSDK::MessagePriority::important)
+             py::arg("reg_address"), py::arg("write_data"), 
+             py::arg("priority") = orcaSDK::MessagePriority::important)
 
         .def("write_multiple_registers_blocking", 
              py::overload_cast<uint16_t, std::vector<uint16_t>, orcaSDK::MessagePriority>(
-               &orcaSDK::Actuator::write_multiple_registers_blocking
-             ),
-             py::arg("reg_start_address"), py::arg("write_data"), py::arg("priority") = orcaSDK::MessagePriority::important)
+                 &orcaSDK::Actuator::write_multiple_registers_blocking),
+             py::arg("reg_start_address"), py::arg("write_data"), 
+             py::arg("priority") = orcaSDK::MessagePriority::important)
 
         .def("read_write_multiple_registers_blocking", 
              py::overload_cast<uint16_t, uint8_t, uint16_t, std::vector<uint16_t>, orcaSDK::MessagePriority>(
-               &orcaSDK::Actuator::read_write_multiple_registers_blocking
-             ),
+                 &orcaSDK::Actuator::read_write_multiple_registers_blocking),
              py::arg("read_starting_address"), py::arg("read_num_registers"),
              py::arg("write_starting_address"), py::arg("write_data"), 
              py::arg("priority") = orcaSDK::MessagePriority::important)
 
-        .def("begin_serial_logging", py::overload_cast<const std::string&>(&orcaSDK::Actuator::begin_serial_logging),
+        .def("begin_serial_logging", 
+             py::overload_cast<const std::string&>(&orcaSDK::Actuator::begin_serial_logging),
              py::arg("log_name"))
 
-        .def("begin_serial_logging", py::overload_cast<const std::string&, std::shared_ptr<orcaSDK::LogInterface>>(&orcaSDK::Actuator::begin_serial_logging),
+        .def("begin_serial_logging", 
+             py::overload_cast<const std::string&, std::shared_ptr<orcaSDK::LogInterface>>(
+                 &orcaSDK::Actuator::begin_serial_logging),
              py::arg("log_name"), py::arg("log"))
 
         .def("run", &orcaSDK::Actuator::run)
