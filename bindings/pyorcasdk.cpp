@@ -25,12 +25,66 @@ PYBIND11_MODULE(_pyorcasdk, m)
 
     // ==================== SerialFTDI ====================
     py::class_<orcaSDK::SerialFTDI, orcaSDK::SerialInterface, std::shared_ptr<orcaSDK::SerialFTDI>>(m, "SerialFTDI")
+        // Constructor with just latency (default USB params)
         .def(py::init<uint8_t>(), py::arg("latency_ms") = 1,
-             "Create SerialFTDI with specified latency timer (1-255 ms, default 1)")
+             "Create SerialFTDI with specified latency timer (1-255 ms, default 1; USB params default to 4096)")
+        
+        // Constructor with latency and separate USB in/out sizes
+        .def(py::init<uint8_t, uint32_t, uint32_t>(),
+             py::arg("latency_ms") = 1,
+             py::arg("usb_in_size") = 4096,
+             py::arg("usb_out_size") = 4096,
+             "Create SerialFTDI with latency and USB transfer sizes")
+        
+        // Constructor with latency and USB params as tuple
+        .def(py::init([](uint8_t latency_ms, std::tuple<uint32_t, uint32_t> usb_params) {
+                return std::make_shared<orcaSDK::SerialFTDI>(
+                    latency_ms, 
+                    std::make_pair(std::get<0>(usb_params), std::get<1>(usb_params))
+                );
+             }),
+             py::arg("latency_ms"),
+             py::arg("usb_params"),
+             "Create SerialFTDI with latency and USB params as tuple (in_size, out_size)")
+        
+        // Latency timer methods
         .def("set_latency_timer", &orcaSDK::SerialFTDI::set_latency_timer,
-             py::arg("latency_ms"), "Set FTDI latency timer in milliseconds")
+             py::arg("latency_ms"), "Set FTDI latency timer (0-255 ms)")
         .def("get_latency_timer", &orcaSDK::SerialFTDI::get_latency_timer,
-             "Get current latency timer setting");
+             "Get current latency timer setting")
+        
+        // USB parameters methods - separate arguments
+        .def("set_usb_parameters",
+             py::overload_cast<uint32_t, uint32_t>(&orcaSDK::SerialFTDI::set_usb_parameters),
+             py::arg("in_size"),
+             py::arg("out_size"),
+             "Set USB transfer sizes (in_size, out_size)")
+        
+        // USB parameters methods - tuple argument
+        .def("set_usb_parameters",
+             [](orcaSDK::SerialFTDI& self, std::tuple<uint32_t, uint32_t> params) {
+                 return self.set_usb_parameters(std::get<0>(params), std::get<1>(params));
+             },
+             py::arg("params"),
+             "Set USB transfer sizes as tuple (in_size, out_size)")
+        
+        // Get USB parameters as tuple
+        .def("get_usb_parameters",
+             [](const orcaSDK::SerialFTDI& self) {
+                 auto params = self.get_usb_parameters();
+                 return std::make_tuple(params.first, params.second);
+             },
+             "Get USB transfer sizes as tuple (in_size, out_size)")
+        
+        // Individual getters
+        .def("get_usb_in_transfer_size", &orcaSDK::SerialFTDI::get_usb_in_transfer_size,
+             "Get USB IN transfer size")
+        .def("get_usb_out_transfer_size", &orcaSDK::SerialFTDI::get_usb_out_transfer_size,
+             "Get USB OUT transfer size")
+        
+        // Inherited methods that might need explicit exposure
+        .def("is_open", &orcaSDK::SerialFTDI::is_open,
+             "Check if serial port is open");
 
     // ==================== Clock ====================
     py::class_<orcaSDK::Clock, std::shared_ptr<orcaSDK::Clock>>(m, "Clock")
